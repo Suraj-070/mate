@@ -1,0 +1,23 @@
+# AI Groupmate — local dev compose
+# Usage:
+#   cp .env.example .env  && fill in tokens
+#   docker compose up --build
+#
+# The SQLite DB is persisted to ./data/groupmate.db via a bind mount.
+
+services:
+  bot:
+    build: .
+    container_name: ai-groupmate
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Override DB path to the mounted volume inside the container
+      DATABASE_URL: sqlite+aiosqlite:////app/data/groupmate.db
+    volumes:
+      - ./data:/app/data
+    # discord.py uses WebSocket + HTTPS on standard ports; no port mapping needed.
+    # If you add a FastAPI admin dashboard later, expose its port here.
+    # ports:
+    #   - "8080:8080"
