@@ -638,8 +638,10 @@ def register_commands(tree: app_commands.CommandTree, client: discord.Client) ->
     ])
     async def reminders_list_cmd(
         interaction: discord.Interaction,
-        scope: app_commands.Choice[str] = app_commands.Choice(name="mine", value="mine"),  # type: ignore[assignment]
+        scope: app_commands.Choice[str] = None,  # type: ignore[assignment]
     ) -> None:
+        if scope is None:
+            scope = app_commands.Choice(name="mine", value="mine")
         from app.database import repository as repo
         from app.tools.reminders.service import format_display_time
 
@@ -736,8 +738,10 @@ def register_commands(tree: app_commands.CommandTree, client: discord.Client) ->
     ])
     async def timers_list_cmd(
         interaction: discord.Interaction,
-        scope: app_commands.Choice[str] = app_commands.Choice(name="mine", value="mine"),  # type: ignore[assignment]
+        scope: app_commands.Choice[str] = None,  # type: ignore[assignment]
     ) -> None:
+        if scope is None:
+            scope = app_commands.Choice(name="mine", value="mine")
         from datetime import datetime, timezone
         from app.database import repository as repo
         from app.tools.timers.service import format_duration
