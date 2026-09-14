@@ -19,6 +19,7 @@ Critical invariants:
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from app.ai.provider import ProviderError, get_provider
@@ -112,6 +113,11 @@ async def generate_response(
             tool_call_id = tc.get("id", "")
             function_block = tc.get("function", {})
             tool_name = function_block.get("name", "")
+
+            # Sanitize tool name — some models hallucinate suffixes like
+            # "list_reminders<|channel|>commentary". Strip at first non-alnum/underscore char.
+            tool_name = re.split(r"[^a-zA-Z0-9_]", tool_name)[0]
+
             raw_args = function_block.get("arguments", {})
 
             log.info(
