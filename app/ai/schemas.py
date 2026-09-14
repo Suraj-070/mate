@@ -83,7 +83,6 @@ class LLMRequest(BaseModel):
         msgs: list[dict[str, Any]] = [{"role": "system", "content": self.system_prompt}]
         msgs.extend(m.to_openai_dict() for m in self.messages)
         kwargs: dict[str, Any] = {
-            "model": "",  # filled by provider
             "messages": msgs,
             "max_tokens": self.max_tokens,
             "temperature": self.temperature,
