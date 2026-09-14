@@ -7,6 +7,7 @@ Phase 3+ may add LLM-based reaction picking if heuristics prove insufficient.
 """
 from __future__ import annotations
 
+import random
 import re
 
 
@@ -89,7 +90,7 @@ def pick_reaction(text: str) -> str:
     Returns the emoji string.
     """
     if not text:
-        return _DEFAULT_ACK_EMOJIS[0]
+        return random.choice(_DEFAULT_ACK_EMOJIS)
 
     lower = text.lower()
     for keyword, emoji in _KEYWORD_EMOJI_MAP:
@@ -98,4 +99,4 @@ def pick_reaction(text: str) -> str:
         if keyword in lower:
             return emoji
 
-    return _DEFAULT_ACK_EMOJIS[0]
+    return random.choice(_DEFAULT_ACK_EMOJIS)

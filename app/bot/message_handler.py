@@ -16,6 +16,8 @@ possible UX.
 """
 from __future__ import annotations
 
+import asyncio
+import random
 import time
 from dataclasses import dataclass
 from typing import Dict
@@ -260,6 +262,13 @@ async def _handle_message_safe(message: discord.Message, client: discord.Client)
         return
 
     # ── RESPOND: build LLM request (Phase 2 needs channel_db_id + discord_channel_id) ─
+
+    # ── Human-like behaviour: occasional skip even when mentioned ──
+    # 5% chance bot just doesn't reply — like a human who saw the message but didn't respond
+    if not is_mention and random.random() < 0.05:
+        log.debug("human_skip", channel=channel_name)
+        return
+
     # Phase 3: build a ToolContext so the orchestrator can dispatch tool calls
     from app.tools.schemas import ToolContext
     tool_ctx = ToolContext(
@@ -281,13 +290,24 @@ async def _handle_message_safe(message: discord.Message, client: discord.Client)
     )
 
     # ── Generate reply (Phase 3: passes tool_context for permission checks) ─
-    reply_text = await generate_response(llm_request, tool_context=tool_ctx)
+    # Show typing indicator while generating — feels human
+    async with message.channel.typing():
+        # Human-like read delay: 0.5–2s based on message length
+        read_delay = min(0.5 + len(message.content) / 200, 2.0)
+        read_delay += random.uniform(-0.2, 0.4)
+        await asyncio.sleep(max(0.3, read_delay))
+
+        reply_text = await generate_response(llm_request, tool_context=tool_ctx)
 
     # ── Post-process ───────────────────────────────────────────
     reply_text = strip_ai_isms(reply_text)
     if not reply_text:
         log.info("empty_reply_after_processing", channel=channel_name)
         return
+
+    # Human-like typing delay before sending: ~50 chars/sec, capped at 3s
+    type_delay = min(len(reply_text) / 50, 3.0) + random.uniform(0.1, 0.5)
+    await asyncio.sleep(type_delay)
 
     # ── Send (handle Discord 2000-char limit) ──────────────────
     chunks = truncate_for_discord(reply_text, max_chars=2000)
