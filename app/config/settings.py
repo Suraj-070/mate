@@ -37,8 +37,12 @@ class Settings(BaseSettings):
     # ── LLM Provider (Groq) ───────────────────────────────────
     groq_api_key: str = Field(description="API key from console.groq.com")
     groq_model: str = Field(
-        default="llama-3.3-70b-versatile",
+        default="openai/gpt-oss-20b",
         description="Groq model name — see https://console.groq.com/docs/models",
+    )
+    openrouter_api_key: str = Field(
+        default="",
+        description="Optional OpenRouter API key for fallback models",
     )
     llm_max_tokens: int = Field(default=400, ge=50, le=4000)
     llm_temperature: float = Field(default=0.7, ge=0.0, le=2.0)
@@ -50,7 +54,7 @@ class Settings(BaseSettings):
     )
 
     # ── Conversation tuning ───────────────────────────────────
-    context_buffer_size: int = Field(default=20, ge=4, le=100)
+    context_buffer_size: int = Field(default=12, ge=4, le=100)
     context_max_tokens: int = Field(default=2000, ge=200, le=32000)
     reply_cooldown_seconds: float = Field(default=2.0, ge=0.0, le=60.0)
     max_replies_per_minute: int = Field(default=10, ge=1, le=60)
@@ -90,7 +94,7 @@ class Settings(BaseSettings):
         description="Summarize when channel buffer reaches this many unsummarized messages",
     )
     max_memories_per_channel: int = Field(
-        default=50, ge=5, le=500,
+        default=15, ge=5, le=500,
         description="Max long-term memories returned per channel for context",
     )
     memory_expiry_sweep_minutes: int = Field(
@@ -134,7 +138,7 @@ class Settings(BaseSettings):
 
     # ── Phase 4: Custom API tools ─────────────────────────────
     enable_custom_api_tools: bool = Field(
-        default=True,
+        default=False,
         description="Enable custom HTTP-based tools (weather, etc.)",
     )
     http_tool_timeout_seconds: float = Field(

@@ -131,6 +131,17 @@ async def get_user_by_id(user_db_id: int) -> Optional[User]:
         return result.scalar_one_or_none()
 
 
+async def get_users_by_ids(user_db_ids: list[int]) -> list[User]:
+    """Batch fetch users by DB primary keys — avoids N+1 queries."""
+    if not user_db_ids:
+        return []
+    async with session_scope() as session:
+        result = await session.execute(
+            select(User).where(User.id.in_(user_db_ids))
+        )
+        return list(result.scalars().all())
+
+
 async def get_or_create_bot_user(discord_user_id: str, display_name: str = "Bot") -> User:
     """Get or create the bot's own user row. Used for FK on bot message logs.
 

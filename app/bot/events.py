@@ -59,10 +59,8 @@ def register_event_handlers(
 
     @client.event
     async def on_message_edit(before: discord.Message, after: discord.Message) -> None:
-        # Treat edits as new messages for simplicity in v1.
-        # Could also ignore them — adjust if your group edits a lot.
-        if before.content != after.content:
-            await handle_message(after, client)
+        # Ignore edits — avoids double LLM calls for typo fixes.
+        pass
 
     # ── Phase 4: Reaction-based memory proposal approval ───────
     @client.event

@@ -96,17 +96,13 @@ async def run_extraction(
     if len(recent) < 5:
         return 0  # not enough to extract from
 
-    # Build a map of author DB IDs -> User rows for privacy filtering
-    author_ids = {m.author_id for m in recent}
+    # Build a map of author DB IDs -> User rows for privacy filtering (batch)
+    author_ids = list({m.author_id for m in recent})
     authors_by_id: dict[int, Any] = {}
-    for aid in author_ids:
-        # We can use get_user_by_id, but to avoid N queries, just store the
-        # user_id — extract_memory_proposals accepts an authors_by_id dict
-        # and checks opt_out_memory. We'll fetch lazily.
-        from app.database.repository import get_user_by_id
-        user = await get_user_by_id(aid)
-        if user is not None:
-            authors_by_id[aid] = user
+    from app.database.repository import get_users_by_ids
+    users = await get_users_by_ids(author_ids)
+    for user in users:
+        authors_by_id[user.id] = user
 
     # Run extraction
     proposals = await extract_memory_proposals(recent, authors_by_id)

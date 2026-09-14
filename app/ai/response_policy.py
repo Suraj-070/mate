@@ -72,8 +72,6 @@ def looks_like_question(text: str) -> bool:
         return False
     if stripped.endswith("?"):
         return True
-    if stripped.endswith("?"):
-        return True
     first_word = stripped.split()[0].lower().rstrip(",.!?:")
     return first_word in _QUESTION_STARTERS
 
