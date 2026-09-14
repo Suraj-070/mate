@@ -157,9 +157,7 @@ def get_default_registry() -> ToolRegistry:
             _registry.register(ListTimersTool())
             _registry.register(CancelTimerTool())
 
-        if settings.enable_custom_api_tools:
-            from app.tools.custom.weather import WeatherTool
-            _registry.register(WeatherTool())
+
 
     log.info("registry_initialized", tool_count=len(_registry))
     return _registry
