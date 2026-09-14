@@ -44,9 +44,6 @@ def build_system_prompt(
     # ── Layer 2: Communication style ─────────────────────────
     layers.append("═══ COMMUNICATION STYLE ═══\n" + s.as_prompt_block())
 
-    # ── Layer 2b: Curated voice examples ─────────────────────
-    layers.append("═══ VOICE EXAMPLES ═══\n" + examples_as_prompt_block())
-
     # ── Layer 3: Language rules ──────────────────────────────
     layers.append(
         "═══ LANGUAGE BEHAVIOR ═══\n" + "\n".join(f"- {r}" for r in p.language_rules)

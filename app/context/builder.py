@@ -36,7 +36,7 @@ _style_profile_cache: dict[int, StyleProfile] = {}
 
 # Keywords that trigger tool loading
 TOOL_KEYWORDS = [
-    "remind", "reminder", "timer", "alarm", "weather", "forecast",
+    "remind", "reminder", "timer", "alarm",
     "schedule", "alert", "notify", "countdown", "when", "baje",
     "remind gara", "set", "cancel", "list reminders", "list timers",
 ]
