@@ -830,6 +830,59 @@ def register_commands(tree: app_commands.CommandTree, client: discord.Client) ->
 
     tree.add_command(timers_group)
 
+        # ── /usage command ─────────────────────────────────────────
+    @tree.command(name="usage", description="Check today's Groq API token usage")
+    async def usage_cmd(interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+        import httpx
+        from datetime import datetime, timezone
+
+        settings = get_settings()
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(
+                    "https://api.groq.com/openai/v1/usage",
+                    headers={"Authorization": f"Bearer {settings.groq_api_key}"},
+                    params={"date": today},
+                )
+
+            if resp.status_code != 200:
+                await interaction.followup.send(
+                    f"couldn't fetch usage (status {resp.status_code})", ephemeral=True
+                )
+                return
+
+            data = resp.json()
+            total_prompt = sum(m.get("prompt_tokens", 0) for m in data.get("data", []))
+            total_completion = sum(m.get("completion_tokens", 0) for m in data.get("data", []))
+            total = total_prompt + total_completion
+            requests_count = sum(m.get("requests", 0) for m in data.get("data", []))
+
+            # Per model breakdown
+            model_lines = []
+            for m in data.get("data", []):
+                model_name = m.get("model_id", "unknown")
+                tokens = m.get("prompt_tokens", 0) + m.get("completion_tokens", 0)
+                reqs = m.get("requests", 0)
+                if tokens > 0:
+                    model_lines.append(f"  `{model_name}` — {tokens:,} tokens ({reqs} reqs)")
+
+            breakdown = "\n".join(model_lines) if model_lines else "  no data"
+
+            msg = (
+                f"**Groq usage for {today}**\n"
+                f"total tokens: **{total:,}**\n"
+                f"requests: **{requests_count}**\n"
+                f"prompt: {total_prompt:,} / completion: {total_completion:,}\n\n"
+                f"**by model:**\n{breakdown}"
+            )
+            await interaction.followup.send(msg, ephemeral=True)
+
+        except Exception as e:
+            await interaction.followup.send(f"error fetching usage: {e}", ephemeral=True)
+
 
 async def sync_commands(
     tree: app_commands.CommandTree,
