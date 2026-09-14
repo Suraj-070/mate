@@ -1,22 +1,11 @@
 """Context builder — assembles the LLM request from all sources.
 
-This is the only place that decides what goes into the LLM prompt.
-If you ever need to change the context strategy (RAG, hierarchical
-memory, compression), this is the file to rewrite.
-
-Phase 2 additions:
-- Fetches per-channel style profile from DB
-- Fetches latest conversation summary
-- Fetches relevant long-term memories
-- All three are passed to build_system_prompt()
-
-Token budget:
-- system_prompt: ~600-1500 tokens (depending on style/examples)
-- recent context: rest of the budget, capped by CONTEXT_MAX_TOKENS
-- reserved for response: ~300 tokens
-
-The builder NEVER exceeds the budget. It trims oldest messages first
-until it fits.
+Smart lazy loading:
+- Tools only injected when message contains tool-related keywords
+- Style profile only loaded if channel has approved samples
+- Memories only queried if channel has any saved
+- Topic only included if detected
+- Summary only included if exists
 """
 from __future__ import annotations
 
@@ -42,27 +31,31 @@ from app.utils.text import estimate_tokens
 
 log = get_logger(__name__)
 
-
 # Cache channel DB id → style profile to avoid DB hit on every message.
-# Invalidated when a profile is rebuilt.
 _style_profile_cache: dict[int, StyleProfile] = {}
+
+# Keywords that trigger tool loading
+TOOL_KEYWORDS = [
+    "remind", "reminder", "timer", "alarm", "weather", "forecast",
+    "schedule", "alert", "notify", "countdown", "when", "baje",
+    "remind gara", "set", "cancel", "list reminders", "list timers",
+]
 
 
 def invalidate_style_cache(channel_db_id: int | None = None) -> None:
-    """Invalidate cached style profile(s). Call after rebuild."""
     if channel_db_id is None:
         _style_profile_cache.clear()
     else:
         _style_profile_cache.pop(channel_db_id, None)
 
 
-def _format_user_message(msg: BufferedMessage, is_current: bool = False) -> str:
-    """Format a buffered message for the LLM.
+def _needs_tools(message_content: str) -> bool:
+    """Check if message likely needs tool use based on keywords."""
+    content_lower = message_content.lower()
+    return any(kw in content_lower for kw in TOOL_KEYWORDS)
 
-    We prefix each user message with the author's display name so the LLM
-    can attribute statements correctly in a multi-user channel. The
-    current message is marked so the LLM knows it's the one to respond to.
-    """
+
+def _format_user_message(msg: BufferedMessage, is_current: bool = False) -> str:
     prefix = "[now]" if is_current else ""
     return f"{prefix}[{msg.author_name}]: {msg.content}".strip()
 
@@ -72,55 +65,58 @@ async def build_request(
     discord_channel_id: str,
     current_message: BufferedMessage,
     tool_definitions: list[dict] | None = None,
-    tool_context: "ToolContext | None" = None,  # noqa: F821 — type-only, lazy import
-    user_db_id: int | None = None,  # Phase 4: for fetching user language preference
+    tool_context: "ToolContext | None" = None,  # noqa: F821
+    user_db_id: int | None = None,
 ) -> LLMRequest:
     """Assemble an LLMRequest ready to send to provider.
 
-    Phase 2: also fetches summary, memories, and per-channel style profile.
-    Phase 3: also injects tool schemas if tools are enabled + a context is provided.
-    Phase 4: also injects active topic + per-user language preference.
-
-    Args:
-        channel_db_id: DB ID of the channel (not Discord ID)
-        discord_channel_id: Discord channel ID (string)
-        current_message: the message that triggered this request
-        tool_definitions: Phase 3+ tool schemas (auto-loaded if None and tools enabled)
-        tool_context: Phase 3+ context for permission checks (passed through to orchestrator)
-        user_db_id: Phase 4 — DB ID of the user to fetch language preference for
+    Lazy loads features only when needed to save tokens.
     """
     settings = get_settings()
     buffer = get_buffer()
 
-    # ── Phase 3: auto-load tool schemas if not explicitly provided ──
+    # ── Smart tool loading — only when message needs it ────────
     if tool_definitions is None and settings.enable_tools:
-        from app.tools.registry import get_default_registry
-        try:
-            registry = get_default_registry()
-            tool_definitions = registry.all_schemas() if len(registry) > 0 else None
-        except Exception as e:
-            log.warning("tool_schema_load_failed", error=str(e))
+        if _needs_tools(current_message.content):
+            from app.tools.registry import get_default_registry
+            try:
+                registry = get_default_registry()
+                tool_definitions = registry.all_schemas() if len(registry) > 0 else None
+                log.debug("tools_loaded_for_message", trigger=True)
+            except Exception as e:
+                log.warning("tool_schema_load_failed", error=str(e))
+                tool_definitions = None
+        else:
+            log.debug("tools_skipped", reason="no_tool_keywords_in_message")
             tool_definitions = None
 
-    # ── Phase 2: load style profile (cached) ───────────────────
+    # ── Style profile — only load if channel has samples ──────
     if channel_db_id in _style_profile_cache:
         style = _style_profile_cache[channel_db_id]
-    else:
+    elif settings.enable_style_learning:
         style = await load_style_profile_for_channel(channel_db_id)
         _style_profile_cache[channel_db_id] = style
+    else:
+        style = default_style_profile()
 
-    # ── Phase 2: retrieve summary + memories ──────────────────
-    extras: ContextExtras = await retrieve_context_extras(channel_db_id)
-    long_term_memories = memories_as_prompt_block(extras.memories)
-    summary_text = extras.summary.summary_text if extras.summary else None
+    # ── Memories + summary — only if enabled ──────────────────
+    long_term_memories: list[str] = []
+    summary_text: str | None = None
 
-    # ── Phase 4: detect active topic ──────────────────────────
+    if settings.enable_long_term_memory or settings.enable_conversation_summaries:
+        extras: ContextExtras = await retrieve_context_extras(channel_db_id)
+        if settings.enable_long_term_memory:
+            long_term_memories = memories_as_prompt_block(extras.memories)
+        if settings.enable_conversation_summaries:
+            summary_text = extras.summary.summary_text if extras.summary else None
+
+    # ── Topic — only if enabled and detected ──────────────────
     topic_block: str | None = None
     if settings.enable_topic_tracking:
         topic = get_channel_topic(discord_channel_id)
         topic_block = topic_as_prompt_block(topic)
 
-    # ── Phase 4: fetch user's language preference ─────────────
+    # ── User language — only if enabled and user exists ───────
     user_language_hint: str | None = None
     if settings.enable_per_user_language and user_db_id is not None:
         try:
@@ -131,7 +127,7 @@ async def build_request(
         except Exception as e:
             log.warning("user_language_lookup_failed", error=str(e), user_db_id=user_db_id)
 
-    # Build the system prompt
+    # ── Build system prompt ────────────────────────────────────
     system_prompt = build_system_prompt(
         personality=default_personality(),
         style=style,
@@ -142,7 +138,7 @@ async def build_request(
         user_language_hint=user_language_hint,
     )
 
-    # ── Build the conversation window ────────────────────────
+    # ── Build conversation window ──────────────────────────────
     all_msgs = buffer.get(discord_channel_id)
 
     llm_messages: list[LLMMessage] = []
@@ -175,7 +171,7 @@ async def build_request(
             current_group.append(msg)
     flush_group(current_group)
 
-    # Append the current message as the final user turn (always)
+    # Append current message as final user turn
     llm_messages.append(
         LLMMessage(
             role="user",
@@ -184,7 +180,7 @@ async def build_request(
         )
     )
 
-    # ── Token budget enforcement ──────────────────────────────
+    # ── Token budget enforcement ───────────────────────────────
     budget = settings.context_max_tokens
     kept: list[LLMMessage] = []
     running = 0
@@ -207,6 +203,7 @@ async def build_request(
         has_summary=summary_text is not None,
         memory_count=len(long_term_memories),
         style_formality=style.formality,
+        tools_loaded=tool_definitions is not None,
     )
 
     return LLMRequest(
