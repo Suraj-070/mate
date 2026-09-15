@@ -43,6 +43,19 @@ log = get_logger(__name__)
 def register_commands(tree: app_commands.CommandTree, client: discord.Client) -> None:
     """Register all slash commands and context menus on the given tree."""
 
+    # ── /bye ─────────────────────────────────────────────────
+    @tree.command(
+        name="bye",
+        description="Send a sweet goodbye 💕",
+    )
+    async def bye_command(interaction: discord.Interaction) -> None:
+        await interaction.response.send_message(
+            "Byeee byeeeee babe😚😚💞💕🧿\n"
+            "Have an amazing day like u\n"
+            "Seee yaaa\n"
+            "Muahhhhh😚😚😚💕💞"
+        )
+
     # ── /remember ────────────────────────────────────────────
     @tree.command(
         name="remember",
